@@ -1,0 +1,72 @@
+name: Node.js CI
+
+# 控制工作流何时运行
+on:
+  push:
+    branches: [main]
+    # tags: ["*"]
+  pull_request:
+    branches: [main]
+
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 20.x
+
+    - name: Install dependencies
+      run: npm install -g vsce
+
+    - name: Build extension
+      run: vsce package
+
+    - name: Upload archive
+      uses: actions/upload-artifact@v4
+      with:
+        name: dvbox
+        path: dvbox-${{ github.event.inputs.version}}.vsix
+
+  publish:
+    needs: [build]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push Git Tag
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git tag ${{ github.event.inputs.version}}
+          git push origin ${{ github.event.inputs.version}}
+          echo "push tag ${{ github.event.inputs.version}}"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dvbox
+          path: dvbox-${{ github.event.inputs.version}}
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        # if: github.ref_type == 'tag'
+        with:
+          name: "${{ github.event.inputs.version}}"
+          tag_name: "${{ github.event.inputs.version}}"
+          files: dvbox-${{ github.event.inputs.version}}/*
